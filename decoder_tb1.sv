@@ -1,5 +1,7 @@
 // Code your testbench here
 // or browse Examples
+// Code your testbench here
+// or browse Examples
 `timescale 1ns/1ps
 
 //--------------------------------------INTERFACE-----------------------------
@@ -13,14 +15,20 @@ interface decoder_interface;
     logic [7:0] corrected;
     logic [1:0] nerr;
     logic [14:0] decodedOp;
-    
-
-    covergroup cov @(posedge clk);
+  
+   covergroup cov ;
         option.per_instance = 1;
         msg: coverpoint received[6:0];
+     nerr: coverpoint nerr{bins b= {0,1,2};}
+     
+     cross_bin : cross msg, nerr;
+      
+        
     endgroup
 
     cov cov_obj = new();
+    
+
 endinterface
 
 //--------------------------------------TRANSACTION----------------------------
@@ -38,7 +46,7 @@ class transaction;
     bit [14:0] decodedOp;
     bit clk;
 
-    constraint limit{e_pos2 != e_pos1;  mode<2'd3;}
+    constraint limit{e_pos2 != e_pos1;  mode<2'd3; e_pos2<15;e_pos1<15;}
 
     function void post_randomize();
         this.received= ig(this.e_pos1,this.e_pos2,this.mode,this.msg);
@@ -119,6 +127,11 @@ endcase
 
 
 endfunction
+  
+  
+  
+  
+   
 
 endclass
 
@@ -128,6 +141,7 @@ class generator;
     transaction tranc;
     mailbox #(transaction) mail;
     mailbox #(transaction) mbxref;
+    event sample;
 
     int count = 250;
     event new_int, finished;
@@ -141,6 +155,7 @@ class generator;
     task run();
         repeat(count) begin
             assert(tranc.randomize()) else $error("Randomization Failed");
+            -> sample;
             mail.put(tranc.copy());
           mbxref.put(tranc.copy());
             @new_int;
@@ -223,11 +238,11 @@ class scoreboard;
             mail.get(tranc);
             mbxref.get(trref);
             
-          if (tranc.corrected == trref.corrected || tranc.decodedOp == trref.correct_code) begin
-            $display("out-- %7b \t decodedOp :%b \t ctrl: %b \t in-- %7b", tranc.corrected,tranc.decodedOp,trref.ctrl, trref.msg);
+          if ( (tranc.decodedOp == trref.correct_code)&&(tranc.nerr==trref.mode)) begin
+            $display("out-- %7b \t decodedOp :%b \t nerr = %d\t mode=%d \t ctrl: %b \t in-- %7b", tranc.corrected,tranc.decodedOp,tranc.nerr,trref.mode,trref.ctrl, trref.msg);
               $display("Matched"); 
             end else
-              $error("Error: Expected %b, got %b", trref.msg, tranc.corrected);
+              $error("Error: Expected %b, got %b  nerr = %d mode = %d decodedOp= %b codeword=%b", trref.msg, tranc.corrected,tranc.nerr,trref.mode,tranc.decodedOp,trref.correct_code);
             ->new_int;
         end
     endtask
@@ -267,6 +282,8 @@ class environment;
         gen.new_int = next_int_pre;
         sco.new_int = next_int_pre;
     endfunction
+  
+ 
 
     task test();
         fork
@@ -283,7 +300,7 @@ class environment;
 
     task post_test();
         wait(gen.finished.triggered);
-        $display("Percentage = %0.2f ", dec_inf.cov_obj.get_inst_coverage());
+      $display("Percentage = %0.2f ", dec_inf.cov_obj.get_inst_coverage());
         $finish();
     endtask
 
@@ -329,8 +346,18 @@ module tb();
     initial begin
         dec_inf.clk = 1;
         env = new(dec_inf);
-        env.gen.count = 250;
+        env.gen.count = 2000;
         env.run();
+    end
+  
+   initial
+    begin
+      while(dec_inf.cov_obj.get_coverage < 100) begin
+		
+			@env.gen.sample;					// randomization
+			dec_inf.cov_obj.sample();							// sampling coverage
+			//itm.print();
+		end
     end
   
     initial begin
