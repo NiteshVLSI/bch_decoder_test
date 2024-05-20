@@ -1,3 +1,5 @@
+// Code your testbench here
+// or browse Examples
 `timescale 1ns/1ps
 
 //--------------------------------------INTERFACE-----------------------------
@@ -26,16 +28,21 @@ endinterface
 class transaction;
 
     randc bit [6:0] msg;
+    bit[14:0] correct_code;
     randc bit ctrl;
+    randc bit [1:0] mode;
+    randc bit[3:0] e_pos1,e_pos2;
     bit [14:0] received;
     bit [7:0] corrected;
     bit [1:0] nerr;
     bit [14:0] decodedOp;
     bit clk;
 
+    constraint limit{e_pos2 != e_pos1;  mode<2'd3;}
+
     function void post_randomize();
-        this.received = {encode(this.msg), this.msg};
-      $display("received value put: %b, msg : %b", this.received,this.msg);
+        this.received= ig(this.e_pos1,this.e_pos2,this.mode,this.msg);
+      $display("received value put: %b, msg : %b  codeword:%b", this.received,this.msg,this.correct_code);
     endfunction
 
     function transaction copy();
@@ -47,6 +54,8 @@ class transaction;
         copy.nerr = this.nerr;
         copy.decodedOp = this.decodedOp;
         copy.clk = this.clk;
+        copy.correct_code = this.correct_code;
+        copy.mode = this.mode;
     endfunction
 
     function [7:0] encode;
@@ -71,6 +80,45 @@ class transaction;
             encode = {c[0], c[1], c[2], c[3], c[4], c[5], c[6], c[7]};
         end
     endfunction
+
+
+
+  function [14:0]ig(input[3:0]epos1,epos2,input[1:0]mode,input[6:0] msg);
+reg[14:0] buff;
+    reg[14:0]buff1;
+    begin
+case(mode)
+0:
+begin
+this.correct_code = {encode(msg),msg};
+buff = this.correct_code;
+
+end
+
+1:
+begin
+
+this.correct_code = {encode(msg),msg};
+buff = this.correct_code;
+buff[epos1] = ~buff[epos1];
+
+end
+
+2:
+begin
+this.correct_code = {encode(msg),msg};
+buff = this.correct_code;
+buff[epos1] = ~buff[epos1];
+buff[epos2] = ~buff[epos2];
+
+end
+
+endcase
+      ig=buff;
+    end
+
+
+endfunction
 
 endclass
 
@@ -175,8 +223,8 @@ class scoreboard;
             mail.get(tranc);
             mbxref.get(trref);
             
-          if (tranc.corrected == trref.corrected || tranc.decodedOp == trref.received) begin
-              $display("out-- %7b \t decodedOp :%b \t ctrl: %b \t in-- %7b", tranc.corrected,tranc.decodedOp,trref.ctrl, trref.msg);
+          if (tranc.corrected == trref.corrected || tranc.decodedOp == trref.correct_code) begin
+            $display("out-- %7b \t decodedOp :%b \t ctrl: %b \t in-- %7b", tranc.corrected,tranc.decodedOp,trref.ctrl, trref.msg);
               $display("Matched"); 
             end else
               $error("Error: Expected %b, got %b", trref.msg, tranc.corrected);
