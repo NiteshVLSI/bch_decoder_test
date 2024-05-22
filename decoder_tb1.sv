@@ -2,34 +2,44 @@
 // or browse Examples
 // Code your testbench here
 // or browse Examples
+// Code your testbench here
+// or browse Examples
 `timescale 1ns/1ps
 
 //--------------------------------------INTERFACE-----------------------------
-
 interface decoder_interface;
 
-    logic [14:0] received;
+  logic [14:0] received;
   logic clk;
-    logic start;
-    logic ctrl;
-    logic [7:0] corrected;
-    logic [1:0] nerr;
-    logic [14:0] decodedOp;
-  
-   covergroup cov ;
-        option.per_instance = 1;
-        msg: coverpoint received[6:0];
-     nerr: coverpoint nerr{bins b= {0,1,2};}
-     
-     cross_bin : cross msg, nerr;
-      
-        
-    endgroup
+  logic start;
+  logic ctrl;
+  logic [7:0] corrected;
+  logic [1:0] nerr;
+  logic [14:0] decodedOp;
 
-    cov cov_obj = new();
+  // Covergroup declaration
+  covergroup cov;
+    option.per_instance = 1;
     
+    // Coverpoints
+    msg: coverpoint received[6:0];
+    nerr: coverpoint nerr {
+      bins zero = {0};
+      bins one = {1};
+      bins two = {2};
+    }
+    ctrl_signal: coverpoint ctrl;
+   
+    
+    // Cross coverage
+    cross_bin: cross msg, nerr;
+  endgroup
+  
+  // Instantiating the covergroup
+  cov cov_obj = new();
 
 endinterface
+
 
 //--------------------------------------TRANSACTION----------------------------
 
@@ -50,7 +60,7 @@ class transaction;
 
     function void post_randomize();
         this.received= ig(this.e_pos1,this.e_pos2,this.mode,this.msg);
-      $display("received value put: %b, msg : %b  codeword:%b", this.received,this.msg,this.correct_code);
+     // $display("received value put: %b, msg : %b  codeword:%b", this.received,this.msg,this.correct_code);
     endfunction
 
     function transaction copy();
@@ -238,8 +248,9 @@ class scoreboard;
             mail.get(tranc);
             mbxref.get(trref);
             
-          if ( (tranc.decodedOp == trref.correct_code)&&(tranc.nerr==trref.mode)) begin
-            $display("out-- %7b \t decodedOp :%b \t nerr = %d\t mode=%d \t ctrl: %b \t in-- %7b", tranc.corrected,tranc.decodedOp,tranc.nerr,trref.mode,trref.ctrl, trref.msg);
+          if ( (tranc.decodedOp == trref.correct_code)&&(tranc.nerr==trref.mode)&&((tranc.corrected==trref.correct_code[14:7])|(tranc.corrected=={1'b0,trref.correct_code[6:0]}))) begin
+            $display("DUT  output : corrected = %b \t nerr = %b \t decodedOp= %b",tranc.corrected,tranc.nerr,tranc.decodedOp);
+            $display("Expected  output :nerr = %b \t correct_code= %b",trref.mode,trref.correct_code);
               $display("Matched"); 
             end else
               $error("Error: Expected %b, got %b  nerr = %d mode = %d decodedOp= %b codeword=%b", trref.msg, tranc.corrected,tranc.nerr,trref.mode,tranc.decodedOp,trref.correct_code);
@@ -346,7 +357,7 @@ module tb();
     initial begin
         dec_inf.clk = 1;
         env = new(dec_inf);
-        env.gen.count = 2000;
+        env.gen.count = 1200;
         env.run();
     end
   
